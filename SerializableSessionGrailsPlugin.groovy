@@ -14,17 +14,8 @@ class SerializableSessionGrailsPlugin {
 
     def author = "David Dawson"
     def authorEmail = "david@dawsonsystems.com"
-    def title = "Enforce Serializable Session"
-    def description = '''\\
-For development only, installs a new Tomcat Valve that will monitor the
-HTTP session and ensure that all objects that go into it can be serialized/ deserialized
-according to java.io.Serializable rules.
-
-It does this by actually serializing/ deserializing the session on every request and throwing an exception
-(which is logged) if it does not conform.
-
-To see more information on what is going on, set the logging level of com.dawsonsystems.session to INFO or DEBUG.
-'''
+    def title = "Serializable Session"
+    def description = 'Enforces that the session will only accept serializable objects.'
 
     // URL to the plugin's documentation
     def documentation = "http://grails.org/plugin/serializable-session"

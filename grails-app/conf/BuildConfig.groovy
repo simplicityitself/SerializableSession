@@ -10,9 +10,9 @@ grails.project.dependency.resolution = {
         grailsPlugins()
         grailsHome()
         grailsCentral()
+        mavenCentral()
     }
     dependencies {
-
-
+      build 'org.apache.httpcomponents:httpclient:4.0.3'
     }
 }
