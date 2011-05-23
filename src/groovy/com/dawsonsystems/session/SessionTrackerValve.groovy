@@ -10,6 +10,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.apache.catalina.util.CustomObjectInputStream
 import org.apache.catalina.session.StandardManager
+import org.codehaus.groovy.grails.commons.ConfigurationHolder
 
 public class SessionTrackerValve extends ValveBase {
   private static Logger log = LoggerFactory.getLogger(SessionTrackerValve);
@@ -17,7 +18,7 @@ public class SessionTrackerValve extends ValveBase {
 
   SessionTrackerValve(def tomcat) {
     this.tomcat = tomcat
-    log.info ("Session Serializabler Checking Enabled")
+    log.info ("SessionTrackerValve: Checking to ensure all items placed in the session are serializable...")
   }
 
   @Override
@@ -41,40 +42,77 @@ public class SessionTrackerValve extends ValveBase {
 
       StandardSession standardSession = (StandardSession) session
 
+      byte[] bytes
+      def serializedOk = false
+      def itemCount = 0
       try {
-        byte[] bytes = serialize(standardSession)
-        log.info("Serialised, session size : ${bytes.size()} bytes")
-        deSerialize(bytes)
-        log.info("Deserialization successful, session conforms")
-      } catch (Exception ex) {
-        log.error("Serialization FAILED, session is not Serializable : ${ex.message}", ex)
-        throw ex
+        def serializationInfo = serialize(standardSession)
+        if (serializationInfo.errors) {
+          Map errors = serializationInfo.errors
+          def sb = new StringBuilder("Serialization FAILED, ${errors.keySet().size()} error(s) occurred while serializing the session for request '${request.requestURI}' with params ${request.parameterMap}:")
+          errors.each { key, value ->
+            sb << "\nField: $key, Unserializable Class: $value"
+          }
+          log.error(sb.toString())
+          if (shouldThrowException()) {
+              throw new NotSerializableException(errors.values().join(", "))
+          }
+        } else {
+          bytes = serializationInfo.bytes
+          itemCount = serializationInfo.itemCount
+          serializedOk = true
+          log.info("Serialized, session size : ${bytes.size()} bytes")
+        }
+      }
+      catch (Exception otherEx) {
+        log.error("An unexpected error occured while attempting to serialize the session : ${otherEx.message}",otherEx)
+        //not throwing as this suggests a bug in the plugin, rather than unserializable session.
+      }
+
+      if (serializedOk) {
+        try {
+          if (itemCount) deSerialize(bytes)
+          log.info("Deserialization successful, session conforms")
+        } catch (NotSerializableException ex) {
+          log.error("Serialization FAILED, a serialization error occured while deserializing the session : ${ex.message}", ex)
+        }
+        catch (Exception otherEx) {
+          log.error("An unexpected error occured while attempting to deserialize the session : ${otherEx.message}",otherEx)
+        }
       }
     } else {
       log.debug("No Session created, no serial check made")
     }
   }
 
-  byte[] serialize(StandardSession session) {
-
+  def serialize(StandardSession session) {
+    def errors = [:]
+    def bytes = new byte[0]
     def attrs = Collections.list(session.attributeNames)
 
     log.debug("Session contains ${attrs.size()} attributes")
 
-    ByteArrayOutputStream bos = new ByteArrayOutputStream()
+    if (attrs.size() > 0) {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream()
 
-    ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(bos))
-    oos.writeInt(attrs.size())
+        ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(bos))
+        oos.writeInt(attrs.size())
 
-    attrs.each {
-      def obj = session.getAttribute(it)
-      log.debug("Serialising : ${it} [${obj}]")
-      oos.writeObject(obj)
+        attrs.each {
+          try {
+            def obj = session.getAttribute(it)
+            log.debug("Serializing : ${it} [${obj}]")
+            oos.writeObject(obj)
+          } catch (NotSerializableException ex) {
+              errors[it] = ex.message
+          }
+        }
+
+        oos.flush()
+        bytes = bos.toByteArray()
     }
 
-    oos.flush()
-
-    return bos.toByteArray()
+    return [bytes:bytes,errors:errors,itemCount:attrs.size()]
   }
 
   void deSerialize(byte[] bytes) {
@@ -84,14 +122,23 @@ public class SessionTrackerValve extends ValveBase {
 
     def bis = new ByteArrayInputStream(bytes)
 
-    def ois = new CustomObjectInputStream(bis, container.findChild("").loader.classLoader)
+    def ois = new CustomObjectInputStream(bis, getClass().classLoader)
 
     int size = ois.readInt()
 
-    log.debug("Contains ${size} serialised objects")
+    log.debug("Contains ${size} serialized objects")
 
     for (int i = 0; i < size; i++) {
-      def object = ois.readObject()
+      ois.readObject()
     }
+  }
+
+  private Boolean shouldThrowException() {
+    def config = ConfigurationHolder.config
+    //If it isn't set, default it to true - groovy truth and the elvis operator fail here :-(
+    if(!(config.serializableSessions.throwExceptionOnFailure instanceof Boolean)) {
+      config.serializableSessions.throwExceptionOnFailure = true
+    }
+    return config.serializableSessions.throwExceptionOnFailure
   }
 }
