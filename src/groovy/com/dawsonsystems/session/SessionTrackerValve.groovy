@@ -57,6 +57,11 @@ public class SessionTrackerValve extends ValveBase {
           if (shouldThrowException()) {
               throw new NotSerializableException(errors.values().join(", "))
           }
+          if (shouldExit()) {
+            log.error("Error Detected in serialization, config is set to abort, killing application ....")
+            Thread.sleep(30)
+            System.exit(1)
+          }
         } else {
           bytes = serializationInfo.bytes
           itemCount = serializationInfo.itemCount
@@ -140,5 +145,15 @@ public class SessionTrackerValve extends ValveBase {
       config.serializableSessions.throwExceptionOnFailure = true
     }
     return config.serializableSessions.throwExceptionOnFailure
+  }
+
+
+  private Boolean shouldExit() {
+    def config = ConfigurationHolder.config
+    //If it isn't set, default it to false
+    if(!(config.serializableSessions.systemExitOnFailure instanceof Boolean)) {
+      config.serializableSessions.systemExitOnFailure = false
+    }
+    return config.serializableSessions.systemExitOnFailure
   }
 }
