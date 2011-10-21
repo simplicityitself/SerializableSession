@@ -10,7 +10,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.apache.catalina.util.CustomObjectInputStream
 import org.apache.catalina.session.StandardManager
-import org.codehaus.groovy.grails.commons.ConfigurationHolder
+import static org.codehaus.groovy.grails.commons.ConfigurationHolder.getConfig
 
 public class SessionTrackerValve extends ValveBase {
   private static Logger log = LoggerFactory.getLogger(SessionTrackerValve);
@@ -85,6 +85,12 @@ public class SessionTrackerValve extends ValveBase {
           log.error("An unexpected error occured while attempting to deserialize the session : ${otherEx.message}",otherEx)
         }
       }
+      if (shouldReplaceSession()) {
+        replaceSessionContents(standardSession)
+        log.info("Replaced session contents with version passed through de/serialized process")
+      } else {
+        log.info("No Replacement...")
+      }
     } else {
       log.debug("No Session created, no serial check made")
     }
@@ -138,21 +144,39 @@ public class SessionTrackerValve extends ValveBase {
     }
   }
 
+  def replaceSessionContents(StandardSession standardSession) {
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(bos));
+    oos.writeLong(standardSession.getCreationTime());
+    standardSession.writeObjectData(oos);
+
+    oos.close();
+
+    byte[] data = bos.toByteArray();
+
+    BufferedInputStream bis = new BufferedInputStream(new ByteArrayInputStream(data));
+
+    ObjectInputStream ois = new CustomObjectInputStream(bis, getClass().classLoader);
+    standardSession.setCreationTime(ois.readLong());
+    standardSession.readObjectData(ois);
+  }
+
+  private Boolean shouldReplaceSession() {
+    if(!(config.serializableSessions.replaceSession instanceof Boolean)) {
+      return true
+    }
+    return config.serializableSessions.replaceSession
+  }
+
   private Boolean shouldThrowException() {
-    def config = ConfigurationHolder.config
-    //If it isn't set, default it to true - groovy truth and the elvis operator fail here :-(
     if(!(config.serializableSessions.throwExceptionOnFailure instanceof Boolean)) {
-      config.serializableSessions.throwExceptionOnFailure = true
+      return true
     }
     return config.serializableSessions.throwExceptionOnFailure
   }
-
-
   private Boolean shouldExit() {
-    def config = ConfigurationHolder.config
-    //If it isn't set, default it to false
     if(!(config.serializableSessions.systemExitOnFailure instanceof Boolean)) {
-      config.serializableSessions.systemExitOnFailure = false
+      return false
     }
     return config.serializableSessions.systemExitOnFailure
   }
