@@ -31,7 +31,9 @@ The following configuration options are available, with their defaults
     }
 
 `throwExceptionOnFailure` indicates whether the system should fail the request by throwing an exception, this will generate an http 500 error when a serialization error occurs
+
 `systemExitOnFailure` indicates that the entire VM should be shut down when serialization occurrs.  This is a good way to enforce rapid fixing of serialization errors as they are created.
+
 `replaceSession`  indicates whether the contents of the session should be replaced by the new de/serialized contents.
 
 New in 0.4
