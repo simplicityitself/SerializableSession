@@ -13,6 +13,14 @@ grails.project.dependency.resolution = {
         mavenCentral()
     }
     dependencies {
-      build 'org.apache.httpcomponents:httpclient:4.0.3'
+      build 'org.apache.httpcomponents:httpclient:4.0.3', {
+        export=false
+      }
+    }
+    plugins {
+      build ":release:3.0.1", {
+        export=false
+      }
+      build ':tomcat:7.0.41'
     }
 }

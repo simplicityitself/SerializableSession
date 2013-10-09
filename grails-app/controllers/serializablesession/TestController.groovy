@@ -3,7 +3,7 @@ package serializablesession
 class TestController {
 
   def index = {
-    session["Simple"] = "SOmething serial"
+    session["Simple"] = "Something serial"
   }
 
   def fail = {

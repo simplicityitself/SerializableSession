@@ -36,6 +36,11 @@ The following configuration options are available, with their defaults
 
 `replaceSession`  indicates whether the contents of the session should be replaced by the new de/serialized contents.
 
+New in 0.5
+----------
+
+Update to grails 2.3.
+
 New in 0.4
 ----------
 
