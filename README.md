@@ -1,14 +1,11 @@
 Serializable Session grails plugin
 ==================================
 
-
 Introduction
 ------------
 
-
 This plugin adds a Tomcat valve that will ensure that any data placed in the session (including the Flash scope) is serializable according
 to the Java Serializable conventions.
-
 
 Features
 --------
@@ -45,3 +42,8 @@ New in 0.4
 ----------
 
 Addition of the `replaceSession` option and feature.
+
+Maintainer
+-----------
+
+David Dawson, sponsored by (Simplicity Itself)[www.simplicityitself.com]
