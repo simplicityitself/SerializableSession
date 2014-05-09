@@ -9,7 +9,7 @@ import org.apache.catalina.valves.ValveBase
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.apache.catalina.util.CustomObjectInputStream
-import static org.codehaus.groovy.grails.commons.ConfigurationHolder.getConfig
+import static grails.util.Holders.config
 
 public class SessionTrackerValve extends ValveBase {
   private static Logger log = LoggerFactory.getLogger(SessionTrackerValve);
