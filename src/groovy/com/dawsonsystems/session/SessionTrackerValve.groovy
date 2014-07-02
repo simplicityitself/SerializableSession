@@ -9,8 +9,7 @@ import org.apache.catalina.valves.ValveBase
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.apache.catalina.util.CustomObjectInputStream
-import org.apache.catalina.session.StandardManager
-import static org.codehaus.groovy.grails.commons.ConfigurationHolder.getConfig
+import static grails.util.Holders.config
 
 public class SessionTrackerValve extends ValveBase {
   private static Logger log = LoggerFactory.getLogger(SessionTrackerValve);
@@ -127,9 +126,6 @@ public class SessionTrackerValve extends ValveBase {
   }
 
   void deSerialize(byte[] bytes) {
-
-    def manager = new StandardManager()
-    manager.container = tomcat.connector.container
 
     def bis = new ByteArrayInputStream(bytes)
 
