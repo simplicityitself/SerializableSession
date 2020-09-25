@@ -1,179 +1,172 @@
-package com.dawsonsystems.session
+package com.flashsales.session
 
-import javax.servlet.ServletException
 import org.apache.catalina.Session
 import org.apache.catalina.connector.Request
 import org.apache.catalina.connector.Response
 import org.apache.catalina.session.StandardSession
+import org.apache.catalina.startup.Tomcat
 import org.apache.catalina.valves.ValveBase
+import org.apache.catalina.util.CustomObjectInputStream
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import org.apache.catalina.util.CustomObjectInputStream
-import static grails.util.Holders.config
+import javax.servlet.ServletException
 
-public class SessionTrackerValve extends ValveBase {
-  private static Logger log = LoggerFactory.getLogger(SessionTrackerValve);
-  def tomcat
+import static grails.util.Holders.getConfig
 
-  SessionTrackerValve(def tomcat) {
-    this.tomcat = tomcat
-    log.info ("SessionTrackerValve: Checking to ensure all items placed in the session are serializable...")
-  }
+class SessionTrackerValve extends ValveBase {
 
-  @Override
-  public void invoke(Request request, Response response) throws IOException, ServletException {
-    try {
-      getNext().invoke(request, response);
-    } finally {
-      storeSession(request, response);
-    }
-  }
+	private static Logger log = LoggerFactory.getLogger(SessionTrackerValve)
 
-  private void storeSession(Request request, Response response) throws IOException {
-    if (request.getRequestedSessionId() == null) {
-      log.debug("No Session requested, no serial check required")
-      return;
-    }
-    Session session = request.getSessionInternal(false);
+	Tomcat tomcat
 
-    if (session != null) {
-      log.debug("Session created or used, checking contents for Serializable correctness")
+	SessionTrackerValve(def tomcat) {
+		this.tomcat = tomcat
+		log.info("SessionTrackerValve: Checking to ensure all items placed in the session are serializable...")
+	}
 
-      StandardSession standardSession = (StandardSession) session
+	@Override
+	void invoke(Request request, Response response) throws IOException, ServletException {
+		try {
+			getNext().invoke(request, response)
+		} finally {
+			storeSession(request, response)
+		}
+	}
 
-      byte[] bytes
-      def serializedOk = false
-      def itemCount = 0
-      try {
-        def serializationInfo = serialize(standardSession)
-        if (serializationInfo.errors) {
-          Map errors = serializationInfo.errors
-          def sb = new StringBuilder("Serialization FAILED, ${errors.keySet().size()} error(s) occurred while serializing the session for request '${request.requestURI}' with params ${request.parameterMap}:")
-          errors.each { key, value ->
-            sb << "\nField: $key, Unserializable Class: $value"
-          }
-          log.error(sb.toString())
-          if (shouldThrowException()) {
-              throw new NotSerializableException(errors.values().join(", "))
-          }
-          if (shouldExit()) {
-            log.error("Error Detected in serialization, config is set to abort, killing application ....")
-            Thread.sleep(30)
-            System.exit(1)
-          }
-        } else {
-          bytes = serializationInfo.bytes
-          itemCount = serializationInfo.itemCount
-          serializedOk = true
-          log.info("Serialized, session size : ${bytes.size()} bytes")
-        }
-      }
-      catch (Exception otherEx) {
-        log.error("An unexpected error occured while attempting to serialize the session : ${otherEx.message}",otherEx)
-        //not throwing as this suggests a bug in the plugin, rather than unserializable session.
-      }
+	private void storeSession(Request request, Response response) throws IOException {
+		if (request.getRequestedSessionId() == null) {
+			log.debug("No Session requested, no serial check required")
+			return
+		}
+		Session session = request.getSessionInternal(false)
 
-      if (serializedOk) {
-        try {
-          if (itemCount) deSerialize(bytes)
-          log.info("Deserialization successful, session conforms")
-        } catch (NotSerializableException ex) {
-          log.error("Serialization FAILED, a serialization error occured while deserializing the session : ${ex.message}", ex)
-        }
-        catch (Exception otherEx) {
-          log.error("An unexpected error occured while attempting to deserialize the session : ${otherEx.message}",otherEx)
-        }
-      }
-      if (shouldReplaceSession()) {
-        replaceSessionContents(standardSession)
-        log.info("Replaced session contents with version passed through de/serialized process")
-      } else {
-        log.info("No Replacement...")
-      }
-    } else {
-      log.debug("No Session created, no serial check made")
-    }
-  }
+		if (session != null) {
+			log.debug("Session created or used, checking contents for Serializable correctness")
 
-  def serialize(StandardSession session) {
-    def errors = [:]
-    def bytes = new byte[0]
-    def attrs = Collections.list(session.attributeNames)
+			StandardSession standardSession = (StandardSession) session
 
-    log.debug("Session contains ${attrs.size()} attributes")
+			byte[] bytes
+			def serializedOk = false
+			def itemCount = 0
 
-    if (attrs.size() > 0) {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream()
+			try {
+				def serializationInfo = serialize(standardSession)
+				if (serializationInfo.errors) {
+					Map errors = serializationInfo.errors
+					def sb = new StringBuilder("Serialization FAILED, ${errors.keySet().size()} error(s) occurred while serializing the session for request '${request.requestURI}' with params ${request.parameterMap}:")
+					errors.each { key, value ->
+						sb << "\nField: $key, Unserializable Class: $value"
+					}
 
-        ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(bos))
-        oos.writeInt(attrs.size())
+					log.error(sb.toString())
 
-        attrs.each {
-          try {
-            def obj = session.getAttribute(it)
-            log.debug("Serializing : ${it} [${obj}]")
-            oos.writeObject(obj)
-          } catch (NotSerializableException ex) {
-              errors[it] = ex.message
-          }
-        }
+					if (shouldThrowException()) {
+						throw new NotSerializableException(errors.values().join(", "))
+					}
+				} else {
+					bytes = serializationInfo.bytes
+					itemCount = serializationInfo.itemCount
+					serializedOk = true
 
-        oos.flush()
-        bytes = bos.toByteArray()
-    }
+					log.info("Serialized, session size : ${bytes.size()} bytes")
+				}
+			} catch (Exception otherEx) {
+				log.error("An unexpected error occured while attempting to serialize the session : ${otherEx.message}", otherEx)
+				// not throwing as this suggests a bug in the class, rather than unserializable session
+			}
 
-    return [bytes:bytes,errors:errors,itemCount:attrs.size()]
-  }
+			if (serializedOk) {
+				try {
+					if (itemCount) deSerialize(bytes)
+					log.info("Deserialization successful, session conforms")
+				} catch (NotSerializableException ex) {
+					log.error("Serialization FAILED, a serialization error occured while deserializing the session : ${ex.message}", ex)
+				} catch (Exception otherEx) {
+					log.error("An unexpected error occured while attempting to deserialize the session : ${otherEx.message}", otherEx)
+				}
+			}
+			if (shouldReplaceSession()) {
+				replaceSessionContents(standardSession)
+				log.info("Replaced session contents with version passed through de/serialized process")
+			} else {
+				log.info("No Replacement...")
+			}
+		} else {
+			log.debug("No Session created, no serial check made")
+		}
+	}
 
-  void deSerialize(byte[] bytes) {
+	private serialize(StandardSession session) {
+		def errors = [:]
+		def bytes = new byte[0]
+		def attrs = Collections.list(session.attributeNames)
 
-    def bis = new ByteArrayInputStream(bytes)
+		log.debug("Session contains ${attrs.size()} attributes")
 
-    def ois = new CustomObjectInputStream(bis, getClass().classLoader)
+		if (attrs.size() > 0) {
+			ByteArrayOutputStream bos = new ByteArrayOutputStream()
+			ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(bos))
 
-    int size = ois.readInt()
+			oos.writeInt(attrs.size())
 
-    log.debug("Contains ${size} serialized objects")
+			attrs.each {
+				try {
+					def obj = session.getAttribute(it)
+					log.debug("Serializing : ${it} [${obj}]")
+					oos.writeObject(obj)
+				} catch (NotSerializableException ex) {
+					errors[it] = ex.message
+				}
+			}
 
-    for (int i = 0; i < size; i++) {
-      ois.readObject()
-    }
-  }
+			oos.flush()
+			bytes = bos.toByteArray()
+		}
 
-  def replaceSessionContents(StandardSession standardSession) {
-    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(bos));
-    oos.writeLong(standardSession.getCreationTime());
-    standardSession.writeObjectData(oos);
+		return [bytes: bytes, errors: errors, itemCount: attrs.size()]
+	}
 
-    oos.close();
+	private void deSerialize(byte[] bytes) {
+		def bis = new ByteArrayInputStream(bytes)
+		def ois = new CustomObjectInputStream(bis, getClass().classLoader)
 
-    byte[] data = bos.toByteArray();
+		int size = ois.readInt()
 
-    BufferedInputStream bis = new BufferedInputStream(new ByteArrayInputStream(data));
+		log.debug("Contains ${size} serialized objects")
 
-    ObjectInputStream ois = new CustomObjectInputStream(bis, getClass().classLoader);
-    standardSession.setCreationTime(ois.readLong());
-    standardSession.readObjectData(ois);
-  }
+		for (int i = 0; i < size; i++) {
+			ois.readObject()
+		}
+	}
 
-  private Boolean shouldReplaceSession() {
-    if(!(config.serializableSessions.replaceSession instanceof Boolean)) {
-      return true
-    }
-    return config.serializableSessions.replaceSession
-  }
+	private replaceSessionContents(StandardSession standardSession) {
+		ByteArrayOutputStream bos = new ByteArrayOutputStream()
+		ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(bos))
 
-  private Boolean shouldThrowException() {
-    if(!(config.serializableSessions.throwExceptionOnFailure instanceof Boolean)) {
-      return true
-    }
-    return config.serializableSessions.throwExceptionOnFailure
-  }
-  private Boolean shouldExit() {
-    if(!(config.serializableSessions.systemExitOnFailure instanceof Boolean)) {
-      return false
-    }
-    return config.serializableSessions.systemExitOnFailure
-  }
+		oos.writeLong(standardSession.getCreationTime())
+		standardSession.writeObjectData(oos)
+		oos.close()
+
+		byte[] data = bos.toByteArray()
+
+		BufferedInputStream bis = new BufferedInputStream(new ByteArrayInputStream(data))
+		ObjectInputStream ois = new CustomObjectInputStream(bis, getClass().classLoader)
+
+		standardSession.setCreationTime(ois.readLong())
+		standardSession.readObjectData(ois)
+	}
+
+	private Boolean shouldReplaceSession() {
+		if (!(config.serializableSessions.replaceSession instanceof Boolean)) {
+			return true
+		}
+		return config.serializableSessions.replaceSession
+	}
+
+	private Boolean shouldThrowException() {
+		if (!(config.serializableSessions.throwExceptionOnFailure instanceof Boolean)) {
+			return true
+		}
+		return config.serializableSessions.throwExceptionOnFailure
+	}
 }
