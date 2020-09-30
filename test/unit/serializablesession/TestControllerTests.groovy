@@ -1,17 +1,10 @@
 package serializablesession
 
-import grails.test.*
+import grails.test.mixin.TestFor
 
-class TestControllerTests extends ControllerUnitTestCase {
-    protected void setUp() {
-        super.setUp()
-    }
+@TestFor(TestController)
+class TestControllerTests {
 
-    protected void tearDown() {
-        super.tearDown()
-    }
-
-    void testSomething() {
-
-    }
+	void testSomething() {
+	}
 }
